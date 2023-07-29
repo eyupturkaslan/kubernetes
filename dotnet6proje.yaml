@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: proje
+# Bu kısım, "proje" adında bir Namespace (İsim Alanı) oluşturuyor.
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-deployment
+  namespace: proje
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
+      containers:
+      - name: api-server-container
+        image: little
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8082
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+          requests:
+            cpu: "1"
+            memory: "512Mi"
+        env:
+        - name: ASPNETCORE_URLS
+          value: http://+:8082
+# Bu kısım, "api-deployment" adında bir Deployment (Dağıtım) oluşturuyor.
+# Bu Deployment, 3 kopya pod oluşturur ve güncelleme sırasında yuvarlanarak (RollingUpdate) 2 yeni pod ekler.
+# Bu podlar "api-server" etiketiyle etiketlenir ve "little" adlı bir imaj kullanarak oluşturulur. Bu imajı minikube üstünde local docker imajıyla çekmek için minikube image load komutu kullandım.
+# Konteyner 8082 portunu dinler ve CPU ve bellek sınırları belirlenir.
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-lb-service
+  namespace: proje
+spec:
+  selector:
+    app: api-server
+  type: LoadBalancer 
+  ports:
+  - name: http
+    port: 8082
+    targetPort: 8082
+    nodePort: 32000
+    protocol: TCP
+# Bu kısım, "my-lb-service" adında bir Service (Hizmet) oluşturuyor.
+# Bu Hizmet, "api-server" etiketini taşıyan podlara yönlendiren bir yük dengeleyici (LoadBalancer) hizmeti tanımlar.
+# Loadbalancer minikube üstünde kullanabilmek için metallb ile dışarı ip ile erişilebilir oluyor ancak sadece host erişebiliyor
+# bunun içinde örneğin loadbalancer ip localde 10.96.31.31 ise bizimde local ip miz 192.168.1.141 ise bu adrese gelen istekleri içeri yönlendirmek için
+# Nginx reverse proxy kullanıp bu şekilde dışardan gelen istekleri içerdeki loadbalancer onbjesine yönlendirir 3 pod varsa 3 poda eşit oranda dağıtır ve 
+# podların erişimi kesilse dahi yeni ip aldıklarında bu entrypointler otomatik update alır ve anında erişime devam eder. Local ip yide modemden dışarı açılabilir veya hosting üzerinden direk dışarı açılabilir.
+# Hizmet 8082 portunu dinler ve podların 8082 portuna yönlendirir.
