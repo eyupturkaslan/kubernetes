@@ -1,0 +1,91 @@
+# PostgreSQL için PersistentVolume (Kalıcı Depolama Birimi) tanımı
+# Bu PersistentVolume, 2Gi depolama alanı kapasitesine sahip ve ReadWriteOnce erişim moduna sahip.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgresql-db-pv
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/postgresql-db  
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+
+---
+
+# PostgreSQL için PersistentVolumeClaim (Kalıcı Depolama Birimi Talebi) tanımı
+# Bu PersistentVolumeClaim, 2Gi depolama talebiyle oluşturulur ve ReadWriteOnce erişim modu kullanır.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-db-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+
+# PostgreSQL için StatefulSet (Durum Yönetim Seti) tanımı
+# Bu StatefulSet, PostgreSQL için 2 replica (kopya) oluşturur ve "postgresql-db" adında bir servis kullanır.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgresql-db
+spec:
+  serviceName: postgresql-db-service
+  selector:
+    matchLabels:
+      app: postgresql-db
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: postgresql-db
+    spec:
+      containers:
+        - name: postgresql-db
+          image: postgretest
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: postgresql-db-disk
+              mountPath: /var/lib/postgresql/data
+          env:
+            - name: POSTGRES_DB
+              value: lvdb
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: orneksifre
+            - name: PGDATA
+              value: /var/lib/postgresql/data
+      volumes:
+        - name: postgresql-db-disk
+          persistentVolumeClaim:
+            claimName: postgresql-db-pvc
+
+---
+
+# PostgreSQL için Service (Hizmet) tanımı loadbalancer kullandım
+# API projesinde olduğu gibi minikube üstünde metallb kurup dışarı sürekli erişilebilir servis haline getiriyorum
+# Sonrasında nginx ile 5432 portuna gelen istekleri otomatik bu servise yönlendiriyorum.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db-loadbalancer
+spec:
+  selector:
+    app: postgresql-db
+  type: LoadBalancer
+ ports:
+  - name: http
+    port: 5432
+    targetPort: 5432
+    nodePort: 32000
+    protocol: TCP
